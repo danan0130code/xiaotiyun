@@ -7,6 +7,11 @@ build/
 coverage/
 test-results/
 playwright-report/
+logs/
+*.log
+*.bak
+__pycache__/
+*.pyc
 
 .env
 .env.*
