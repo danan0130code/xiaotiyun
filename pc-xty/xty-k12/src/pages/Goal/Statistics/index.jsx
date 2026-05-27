@@ -1,0 +1,1225 @@
+import { useState, useMemo } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import dayjs from 'dayjs'
+import { Card, Row, Col, Statistic, Tabs, Radio, Table, Input, Select, Tag, Space, Button, Modal, Descriptions, Empty, Tooltip, Popover, Drawer, Calendar, Progress, Badge, message } from 'antd'
+import { SearchOutlined, DownloadOutlined, QuestionCircleOutlined } from '@ant-design/icons'
+import {
+  generateStudentOverview, generateTeacherOverview,
+  generateStudentGoalTabs, generateTeacherGoalTabs,
+  generateAchievementBoard, generateTrendData,
+  generateGradeRanking, generateClassRanking,
+  generateStudentAchievementList, generateMultiProjectStudentList,
+  generateTeacherAchievementList,
+  generateStudentDetailData, generateMultiProjectDetailData, generateTeacherDetailData,
+  PREDEFINED_GOALS,
+} from '../../../mock/goalStatistics'
+import { GRADES } from '../../../mock/goalStatistics'
+
+const FIELD_HELP = {
+  snapshotTime: '统计截止时间：最近一次统计快照的截止时间，第二天展示截至前一天 24:00 的数据。',
+  overallRate: '整体达标率：快照中的整体已达标人数 / 覆盖人数。每日目标按截至统计截止时间已进入统计的执行日期判断；每月目标按已进入统计的月份判断。',
+  covered: '覆盖人数：目标创建时覆盖快照中的人数。学生目标受性别筛选影响；教师目标覆盖学校内全部教师。',
+  achieved: '整体已达标：快照中满足当前目标整体达标规则的人数。',
+  notAchieved: '整体未达标：覆盖人数 - 整体已达标人数。',
+  periodProgress: '周期进度：每日目标展示已进入统计的执行天数/目标总执行天数；每月目标展示已统计月份/目标总月份；学期/自定义展示统计截止时间在目标周期内的位置。',
+  trend: '趋势图读取日/月统计快照，用于观察阶段波动；每日目标只展示执行星期命中的日期。',
+  currentRate: '截止快照周期达成率：每日/每月目标展示截至统计截止时间的日/月达成率；学期/自定义展示截至统计截止时间的累计完成值/目标值。',
+  progress: '达标进度：每日目标展示已达标执行天数/已进入统计的执行天数；每月目标展示已达标月份/已进入统计的月份；学期/自定义普通总目标展示累计完成进度。',
+  overallStatus: '整体状态：每日/每月目标展示保持达标或已失达标；学期/自定义普通总目标展示已达标或未达标；阳光跑总目标只有在开启周/月次数且已到达自然周/月未达标时才展示已失达标。',
+}
+
+function HelpTitle({ children, helpKey, text }) {
+  const content = text || FIELD_HELP[helpKey]
+  return (
+    <Space size={4}>
+      <span>{children}</span>
+      {content && (
+        <Popover content={<div style={{ maxWidth: 280, fontSize: 12, lineHeight: 1.6 }}>{content}</div>} trigger="click">
+          <QuestionCircleOutlined style={{ color: '#8c8c8c', cursor: 'pointer' }} />
+        </Popover>
+      )}
+    </Space>
+  )
+}
+
+function getOverallStatusColor(status) {
+  if (status === '保持达标' || status === '已达标') return 'success'
+  if (status === '已失达标') return 'warning'
+  return 'error'
+}
+
+function getOverallStatusText(data) {
+  return data?.overallStatus || (data?.achieved ? '已达标' : '未达标')
+}
+
+// ====== 入口：双Tab页面 ======
+export default function GoalStatisticsPage() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const searchParams = new URLSearchParams(location.search)
+  const activeTab = searchParams.get('tab') || 'student'
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 16, flex: '0 0 auto' }}>
+        运动目标统计
+      </div>
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <Tabs
+          activeKey={activeTab}
+          onChange={key => navigate(`/goal/statistics?tab=${key}`, { replace: true })}
+          items={[
+            { key: 'student', label: '学生目标统计', children: <StudentStatistics /> },
+            { key: 'teacher', label: '教师目标统计', children: <TeacherStatistics /> },
+          ]}
+          style={{ height: '100%' }}
+          tabBarStyle={{ marginBottom: 0 }}
+          destroyOnHidden
+        />
+      </div>
+    </div>
+  )
+}
+
+// ====== 学生目标统计 ======
+function StudentStatistics() {
+  const [statusPhase, setStatusPhase] = useState('active')
+  const isActiveMode = statusPhase === 'active'
+  const [groupType, setGroupType] = useState('all')
+  const studentTabs = useMemo(() => generateStudentGoalTabs(groupType, statusPhase), [groupType, statusPhase])
+  const [activeGoalId, setActiveGoalId] = useState(null)
+  const [genderFilter, setGenderFilter] = useState('all')
+  const [ruleDrawer, setRuleDrawer] = useState(false)
+
+  const currentTab = activeGoalId
+    ? studentTabs.find(t => t.id === activeGoalId)
+    : studentTabs[0]
+
+  const board = useMemo(() => {
+    if (!currentTab) return null
+    return generateAchievementBoard(currentTab)
+  }, [currentTab])
+
+  const trend = useMemo(() => {
+    if (!currentTab) return []
+    return generateTrendData(currentTab.cycleType, currentTab.timeRange, currentTab.executeWeekdays)
+  }, [currentTab])
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <Module0_StudentOverview statusPhase={statusPhase} />
+
+      <div style={{ flex: 1, overflow: 'auto', minHeight: 0, paddingTop: 16 }}>
+        <div style={{ background: '#fff', padding: '12px 16px', borderRadius: 8, marginBottom: 16 }}>
+          <Space size={16} wrap separator={<span style={{ color: '#e8e8e8' }}>|</span>}>
+            <Radio.Group value={groupType} onChange={e => { setGroupType(e.target.value); setActiveGoalId(null) }}
+              options={[
+                { label: '全部', value: 'all' },
+                { label: '校级目标', value: 'school' },
+              ]} />
+            <Radio.Group value={statusPhase} onChange={e => setStatusPhase(e.target.value)}
+              options={[{ label: '进行中', value: 'active' }, { label: '已结束', value: 'ended' }]} />
+            <Select placeholder="性别" allowClear style={{ width: 100 }} value={genderFilter}
+              onChange={setGenderFilter} options={[{ label: '不限', value: 'all' }, { label: '男', value: 'male' }, { label: '女', value: 'female' }]} />
+          </Space>
+        </div>
+
+        {studentTabs.length === 0 ? (
+          <div style={{ background: '#fff', padding: 80, borderRadius: 8, textAlign: 'center' }}>
+            <Empty description={
+              <div>
+                <div style={{ fontWeight: 500 }}>{isActiveMode ? '当前无进行中的目标' : '当前无已结束的目标'}</div>
+                {isActiveMode && <div style={{ color: '#8c8c8c', fontSize: 13, marginTop: 4 }}>
+                  当前分组下无生效中或未生效的目标，可切换至「已结束」查看历史数据
+                </div>}
+              </div>
+            } />
+          </div>
+        ) : (
+          <>
+            <div style={{ background: '#fff', padding: '8px 16px', borderRadius: 8, marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Tabs
+                activeKey={activeGoalId || studentTabs[0]?.id}
+                onChange={key => setActiveGoalId(key)}
+                size="small"
+                items={studentTabs.map(t => ({
+                  key: t.id,
+                  label: <span>{t.label} <Tag color={t.sportMode === 'sunrun' ? 'purple' : t.sportMode === 'all' ? 'blue' : 'green'} style={{ marginLeft: 4 }}>{t.achieveRate}%</Tag></span>,
+                }))}
+              />
+              {currentTab && (
+                <Button size="small" type="link" onClick={() => setRuleDrawer(true)}>查看规则</Button>
+              )}
+            </div>
+
+            {currentTab && board && (
+              <>
+                <ModuleS_GoalSummary goal={currentTab} />
+                <ModuleA_AchievementBoard board={board} trend={trend} currentTab={currentTab} />
+                <div style={{ marginTop: 16 }}>
+                  <ModuleBC_TabContainer currentTab={currentTab} />
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </div>
+
+      <GoalRuleDrawer visible={ruleDrawer} goal={currentTab} onClose={() => setRuleDrawer(false)} />
+    </div>
+  )
+}
+
+// ====== 教师目标统计 ======
+function TeacherStatistics() {
+  const [statusPhase, setStatusPhase] = useState('active')
+  const isActiveMode = statusPhase === 'active'
+  const teacherTabs = useMemo(() => generateTeacherGoalTabs(statusPhase), [statusPhase])
+  const [activeGoalId, setActiveGoalId] = useState(null)
+  const [ruleDrawer, setRuleDrawer] = useState(false)
+
+  const currentTab = activeGoalId
+    ? teacherTabs.find(t => t.id === activeGoalId)
+    : teacherTabs[0]
+
+  const board = useMemo(() => {
+    if (!currentTab) return null
+    return generateAchievementBoard(currentTab)
+  }, [currentTab])
+
+  const trend = useMemo(() => {
+    if (!currentTab) return []
+    return generateTrendData(currentTab.cycleType, currentTab.timeRange, currentTab.executeWeekdays)
+  }, [currentTab])
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <Module0T_TeacherOverview statusPhase={statusPhase} />
+
+      <div style={{ flex: 1, overflow: 'auto', minHeight: 0, paddingTop: 16 }}>
+        <div style={{ background: '#fff', padding: '12px 16px', borderRadius: 8, marginBottom: 16 }}>
+          <Radio.Group value={statusPhase} onChange={e => setStatusPhase(e.target.value)}
+            options={[{ label: '进行中', value: 'active' }, { label: '已结束', value: 'ended' }]} />
+        </div>
+
+        {teacherTabs.length === 0 ? (
+          <div style={{ background: '#fff', padding: 80, borderRadius: 8, textAlign: 'center' }}>
+            <Empty description={
+              <div>
+                <div style={{ fontWeight: 500 }}>{isActiveMode ? '当前无进行中的目标' : '当前无已结束的目标'}</div>
+              </div>
+            } />
+          </div>
+        ) : (
+          <>
+            <div style={{ background: '#fff', padding: '8px 16px', borderRadius: 8, marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Tabs
+                activeKey={activeGoalId || teacherTabs[0]?.id}
+                onChange={key => setActiveGoalId(key)} size="small"
+                items={teacherTabs.map(t => ({
+                  key: t.id,
+                  label: <span>{t.label} <Tag color={t.sportMode === 'sunrun' ? 'purple' : t.sportMode === 'all' ? 'blue' : 'green'} style={{ marginLeft: 4 }}>{t.achieveRate}%</Tag></span>,
+                }))}
+              />
+              {currentTab && (
+                <Button size="small" type="link" onClick={() => setRuleDrawer(true)}>查看规则</Button>
+              )}
+            </div>
+
+            {currentTab && board && (
+              <>
+                <ModuleS_GoalSummary goal={currentTab} />
+                <ModuleA_AchievementBoard board={board} trend={trend} currentTab={currentTab} isTeacher />
+                <div style={{ marginTop: 16 }}>
+                  <ModuleT_TabContainer currentTab={currentTab} />
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </div>
+
+      <GoalRuleDrawer visible={ruleDrawer} goal={currentTab} onClose={() => setRuleDrawer(false)} />
+    </div>
+  )
+}
+
+// ====== 模块 0: 学生全局概览（仅目标数） ======
+function Module0_StudentOverview({ statusPhase }) {
+  const label = statusPhase === 'active' ? '进行中' : '已结束'
+  const color = statusPhase === 'active' ? '#1677ff' : '#8c8c8c'
+  const overview = useMemo(() => generateStudentOverview(statusPhase), [statusPhase])
+  return (
+    <div style={{ background: '#fff', padding: 20, borderRadius: 8, flex: '0 0 auto' }}>
+      <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 12 }}>
+        全局概览 <Tag color="default" style={{ marginLeft: 8, borderColor: color, color }}>{label}</Tag>
+      </div>
+      <Row gutter={16}>
+        <Col span={6}><Card size="small"><Statistic title="全校目标数" value={overview.wholeSchoolGoalCount} suffix="个" /></Card></Col>
+      </Row>
+    </div>
+  )
+}
+
+// ====== 模块 0T: 教师全局概览（仅目标个数） ======
+function Module0T_TeacherOverview({ statusPhase }) {
+  const label = statusPhase === 'active' ? '进行中' : '已结束'
+  const color = statusPhase === 'active' ? '#1677ff' : '#8c8c8c'
+  const overview = useMemo(() => generateTeacherOverview(statusPhase), [statusPhase])
+  return (
+    <div style={{ background: '#fff', padding: 20, borderRadius: 8, flex: '0 0 auto' }}>
+      <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 12 }}>
+        全局概览 <Tag color="default" style={{ marginLeft: 8, borderColor: color, color }}>{label}</Tag>
+      </div>
+      <Row gutter={16}>
+        <Col span={6}><Card size="small"><Statistic title="教师目标数" value={overview.teacherGoalCount} suffix="个" /></Card></Col>
+      </Row>
+    </div>
+  )
+}
+
+// ====== 模块 S: 目标概览说明 ======
+function ModuleS_GoalSummary({ goal }) {
+  if (!goal) return null
+  const statusTag = goal.status === 'stopped' ? <Tag color="warning">已停止</Tag>
+    : goal.status === 'expired' ? <Tag color="default">已过期</Tag>
+    : goal.status === 'pending' ? <Tag color="default">未生效</Tag>
+    : <Tag color="success">生效中</Tag>
+
+  return (
+    <div style={{ background: '#f0f5ff', padding: '12px 16px', borderRadius: 8, marginBottom: 16, border: '1px solid #d6e4ff' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <Tag color={goal.cycleType === 'daily' ? 'cyan' : goal.cycleType === 'monthly' ? 'geekblue' : goal.cycleType === 'semester' ? 'purple' : 'orange'}>
+          {goal.cycleLabel || '每日'}
+        </Tag>
+        <Tag color={goal.sportMode === 'sunrun' ? 'purple' : goal.sportMode === 'all' ? 'blue' : goal.sportMode === 'multi' ? 'orange' : 'green'}>
+          {goal.sportModeLabel || '全部项目'}
+        </Tag>
+        <span style={{ color: '#595959', fontSize: 13 }}>
+          统计项目：{goal.sportMode === 'all' ? '全部项目'
+            : goal.sportMode === 'sunrun' ? '阳光跑'
+            : goal.sportMode === 'multi' ? (goal.subProjects || []).map(p => p.name).join('、') || '--'
+            : (goal.singleProject || '未指定')}
+        </span>
+        <span style={{ color: '#8c8c8c' }}>·</span>
+        <span style={{ color: '#595959', fontSize: 13 }}>适用范围：{goal.scopeText || '全校'}</span>
+        <span style={{ color: '#8c8c8c' }}>·</span>
+        <span style={{ color: '#595959', fontSize: 13 }}>目标：{goal.targetSummary || '--'}</span>
+        <span style={{ color: '#8c8c8c' }}>·</span>
+        <span style={{ color: '#595959', fontSize: 13 }}>时间范围：{goal.timeRange || '--'}</span>
+        {goal.cycleType === 'daily' && (
+          <>
+            <span style={{ color: '#8c8c8c' }}>·</span>
+            <span style={{ color: '#595959', fontSize: 13 }}>执行星期：{goal.executeWeekdaysText || goal.executeWeekdays?.join('、') || '周一至周日'}</span>
+          </>
+        )}
+        <span style={{ color: '#8c8c8c' }}>·</span>
+        <span style={{ color: '#595959', fontSize: 13 }}>统计截止时间：{goal.snapshotTime || '2026-05-18 24:00'}</span>
+        {statusTag}
+      </div>
+    </div>
+  )
+}
+
+// ====== 模块 A: 达成概览看板 ======
+function ModuleA_AchievementBoard({ board, trend, currentTab, isTeacher }) {
+  if (!board) return null
+
+  const label = isTeacher ? '覆盖教师数' : '覆盖学生数'
+  const total = board.totalStudents || board.totalTeachers
+
+  return (
+    <div style={{ background: '#fff', padding: 24, borderRadius: 8 }}>
+      <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 16 }}>达成概览</div>
+      <Row gutter={16}>
+        <Col span={4}>
+          <Card><Statistic title={<HelpTitle helpKey="snapshotTime">统计截止时间</HelpTitle>} value={board.snapshotTime || '--'} valueStyle={{ fontSize: 16, color: '#1677ff' }} /></Card>
+        </Col>
+        <Col span={5}>
+          <Card style={{ textAlign: 'center', border: '2px solid #1677ff' }}>
+            <div style={{ color: '#8c8c8c', marginBottom: 8 }}>
+              <HelpTitle helpKey="overallRate">整体达标率</HelpTitle>
+            </div>
+            <div style={{ fontSize: 36, fontWeight: 700, color: board.rate !== null ? '#1677ff' : '#8c8c8c' }}>
+              {board.rate !== null ? `${board.rate}%` : '--'}
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <span style={{ fontSize: 13, color: '#595959' }}>已达标 {board.achieved} / {total}</span>
+            </div>
+          </Card>
+        </Col>
+        <Col span={4}><Card><Statistic title={<HelpTitle helpKey="covered">{label}</HelpTitle>} value={total || '--'} suffix="人" /></Card></Col>
+        <Col span={4}><Card><Statistic title={<HelpTitle helpKey="achieved">整体已达标</HelpTitle>} value={board.achieved || '--'} suffix="人" valueStyle={{ color: '#52c41a' }} /></Card></Col>
+        <Col span={4}><Card><Statistic title={<HelpTitle helpKey="notAchieved">整体未达标</HelpTitle>} value={board.notAchieved || '--'} suffix="人" valueStyle={{ color: '#ff4d4f' }} /></Card></Col>
+        <Col span={3}><Card><Statistic title={<HelpTitle helpKey="periodProgress">周期进度</HelpTitle>} value={board.periodProgress || '--'} valueStyle={{ color: '#1677ff', fontSize: 22 }} /></Card></Col>
+      </Row>
+
+      {/* 达标趋势图（仅每日/每月展示，学期/自定义不展示） */}
+      {currentTab && (currentTab.cycleType === 'daily' || currentTab.cycleType === 'monthly') && trend.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>
+              <HelpTitle helpKey="trend">达标趋势 {currentTab.cycleType === 'daily' ? '（按日期）' : '（按月份）'}</HelpTitle>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span style={{ fontSize: 12, color: '#8c8c8c' }}>时间范围：</span>
+              <Input placeholder="开始" style={{ width: 120 }} size="small"
+                defaultValue={currentTab.timeRange?.split('至')[0]?.trim() || ''} />
+              <span style={{ color: '#8c8c8c' }}>至</span>
+              <Input placeholder="结束" style={{ width: 120 }} size="small"
+                defaultValue={currentTab.timeRange?.split('至')[1]?.trim() || ''} />
+            </div>
+          </div>
+          <div style={{ height: 180, display: 'flex', alignItems: 'flex-end', gap: 4, padding: '0 8px' }}>
+            {trend.map((d, i) => {
+              const h = (d.value / 100) * 160
+              return (
+                <Tooltip key={i} title={`${d.label}: ${currentTab.cycleType === 'daily' ? '执行日达标率' : '当月达标率'} ${d.value}%`}>
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                    <div style={{
+                      width: '100%', maxWidth: 36, height: Math.max(h, 4),
+                      background: d.value >= 60 ? '#1677ff' : '#faad14',
+                      borderRadius: '4px 4px 0 0', transition: 'height 0.3s',
+                    }} />
+                    <div style={{ fontSize: 10, color: '#8c8c8c', textAlign: 'center', whiteSpace: 'nowrap' }}>{d.label}</div>
+                  </div>
+                </Tooltip>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ====== 模块 B+C: 学生排名 + 学生列表 双Tab ======
+function ModuleBC_TabContainer({ currentTab }) {
+  const [activeSubTab, setActiveSubTab] = useState('students')
+
+  return (
+    <div style={{ background: '#fff', borderRadius: 8 }}>
+      <Tabs
+        activeKey={activeSubTab}
+        onChange={setActiveSubTab}
+        size="small"
+        items={[
+          { key: 'students', label: '学生达成列表', children: <ModuleC_StudentList currentTab={currentTab} /> },
+          { key: 'ranking', label: '年级/班级达成排名', children: <ModuleB_RankingWrapper currentTab={currentTab} /> },
+        ]}
+      />
+    </div>
+  )
+}
+
+
+// ====== 模块 B: 排名（统一列：排名/年级班级/覆盖学生数/达标人数/达标率） ======
+function ModuleB_RankingWrapper({ currentTab }) {
+  const [rankViewMode, setRankViewMode] = useState('all')
+  const [selectedDate, setSelectedDate] = useState('')
+  const [selectedMonth, setSelectedMonth] = useState('')
+  const cycleType = currentTab?.cycleType
+
+  const dateOptions = useMemo(() => {
+    if (cycleType !== 'daily') return []
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(2026, 4, 9 + i)
+      return { label: `${d.getMonth() + 1}/${d.getDate()}`, value: `${d.getMonth() + 1}/${d.getDate()}` }
+    })
+  }, [cycleType])
+
+  const monthOptions = useMemo(() => {
+    if (cycleType !== 'monthly') return []
+    return [
+      { label: '3月', value: '3' },
+      { label: '4月', value: '4' },
+      { label: '5月', value: '5' },
+    ]
+  }, [cycleType])
+
+  const gradeData = useMemo(() => generateGradeRanking(cycleType), [cycleType])
+  const classData = useMemo(() => generateClassRanking(cycleType), [cycleType])
+
+  const rankingColumns = useMemo(() => [
+    {
+      title: '排名', dataIndex: 'id', key: 'id', width: 60,
+      render: (v) => {
+        if (v === 1) return <span style={{ color: '#faad14', fontWeight: 700, fontSize: 16 }}>🥇</span>
+        if (v === 2) return <span style={{ color: '#bfbfbf', fontWeight: 700, fontSize: 16 }}>🥈</span>
+        if (v === 3) return <span style={{ color: '#d4850a', fontWeight: 700, fontSize: 16 }}>🥉</span>
+        return <span style={{ color: '#8c8c8c' }}>{v}</span>
+      },
+    },
+    { title: '年级/班级', dataIndex: 'name', key: 'name', width: 140 },
+    { title: <HelpTitle helpKey="covered">覆盖学生数</HelpTitle>, dataIndex: 'totalStudents', key: 'totalStudents', width: 120 },
+    { title: <HelpTitle helpKey="achieved">整体达标人数</HelpTitle>, dataIndex: 'achieved', key: 'achieved', width: 130 },
+    {
+      title: <HelpTitle helpKey="overallRate">整体达标率</HelpTitle>, dataIndex: 'rate', key: 'rate', width: 120,
+      render: (v) => v != null
+        ? <span style={{ fontWeight: 600, color: v >= 60 ? '#52c41a' : '#ff4d4f' }}>{v}%</span>
+        : <span style={{ color: '#8c8c8c' }}>--</span>,
+    },
+  ], [])
+
+  const showDateFilter = cycleType === 'daily'
+  const showMonthFilter = cycleType === 'monthly'
+
+  return (
+    <div style={{ padding: 24 }}>
+      <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 16 }}>年级/班级达成排名</div>
+
+      {showDateFilter && (
+        <div style={{ marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center' }}>
+          <Radio.Group value={rankViewMode} onChange={e => setRankViewMode(e.target.value)} size="small"
+            options={[
+              { label: '全部日期', value: 'all' },
+              { label: '选择日期', value: 'single' },
+            ]} />
+          {rankViewMode === 'single' && (
+            <Select value={selectedDate} onChange={setSelectedDate} placeholder="选择日期" style={{ width: 140 }}
+              options={dateOptions} allowClear />
+          )}
+          {rankViewMode === 'single' && <span style={{ color: '#8c8c8c', fontSize: 12 }}>选择具体日期后，排名按当日达标率查看。</span>}
+        </div>
+      )}
+
+      {showMonthFilter && (
+        <div style={{ marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center' }}>
+          <Radio.Group value={rankViewMode} onChange={e => setRankViewMode(e.target.value)} size="small"
+            options={[
+              { label: '全部月份', value: 'all' },
+              { label: '选择月份', value: 'single' },
+            ]} />
+          {rankViewMode === 'single' && (
+            <Select value={selectedMonth} onChange={setSelectedMonth} placeholder="选择月份" style={{ width: 120 }}
+              options={monthOptions} allowClear />
+          )}
+          {rankViewMode === 'single' && <span style={{ color: '#8c8c8c', fontSize: 12 }}>选择具体月份后，排名按当月达标率查看。</span>}
+        </div>
+      )}
+
+      <Table columns={rankingColumns} dataSource={gradeData} rowKey="id" size="small"
+        pagination={false} scroll={{ y: 400 }}
+        expandable={{
+          expandedRowRender: () => (
+            <Table columns={rankingColumns} dataSource={classData} rowKey="id" size="small" pagination={false} />
+          ),
+        }} />
+    </div>
+  )
+}
+
+// ====== 模块 C: 学生达成列表 ======
+function ModuleC_StudentList({ currentTab }) {
+  const cycleType = currentTab?.cycleType
+  const sportMode = currentTab?.sportMode
+  const isMulti = sportMode === 'multi'
+
+  const allData = useMemo(() => {
+    return isMulti
+      ? generateMultiProjectStudentList(30)
+      : generateStudentAchievementList(100, cycleType, sportMode)
+  }, [isMulti, cycleType, currentTab?.id])
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [gradeFilter, setGradeFilter] = useState(undefined)
+  const [classFilter, setClassFilter] = useState(undefined)
+  const [genderFilter, setGenderFilter] = useState('all')
+  const [keyword, setKeyword] = useState('')
+  const [detailModal, setDetailModal] = useState(false)
+  const [currentStudent, setCurrentStudent] = useState(null)
+
+  const [viewDate, setViewDate] = useState('')
+  const [viewMonth, setViewMonth] = useState('')
+  const dateOptions = useMemo(() => {
+    if (cycleType !== 'daily') return []
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(2026, 4, 9 + i)
+      return { label: `${d.getMonth() + 1}/${d.getDate()}`, value: `${d.getMonth() + 1}/${d.getDate()}` }
+    })
+  }, [cycleType])
+  const monthOptions = useMemo(() => {
+    if (cycleType !== 'monthly') return []
+    return [
+      { label: '3月', value: '3' },
+      { label: '4月', value: '4' },
+      { label: '5月', value: '5' },
+    ]
+  }, [cycleType])
+
+  const filtered = useMemo(() => {
+    return allData.filter(item => {
+      if (statusFilter === 'achieved' && !item.achieved) return false
+      if (statusFilter === 'not-achieved' && item.achieved) return false
+      if (gradeFilter && item.grade !== gradeFilter) return false
+      if (classFilter && item.className !== classFilter) return false
+      if (genderFilter !== 'all' && item.gender !== genderFilter) return false
+      if (keyword && !item.name.includes(keyword) && !item.studentNo?.includes(keyword)) return false
+      return true
+    })
+  }, [allData, statusFilter, gradeFilter, classFilter, genderFilter, keyword])
+
+  const sorted = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      if (a.achieved !== b.achieved) return a.achieved ? -1 : 1
+      return b.currentRate - a.currentRate
+    })
+  }, [filtered])
+
+  const renderRate = (v) => {
+    const capped = Math.min(v, 100)
+    return <span style={{ fontWeight: 600, color: capped >= 100 ? '#52c41a' : '#ff4d4f' }}>{capped}%</span>
+  }
+
+  const studentColumns = isMulti
+    ? [
+        { title: '学生姓名', dataIndex: 'name', key: 'name', width: 90 },
+        { title: '学籍号', dataIndex: 'studentNo', key: 'studentNo', width: 130 },
+        { title: '班级', dataIndex: 'className', key: 'className', width: 120 },
+        { title: '年级', dataIndex: 'grade', key: 'grade', width: 70 },
+        { title: '性别', dataIndex: 'gender', key: 'gender', width: 50 },
+        {
+          title: <HelpTitle helpKey="currentRate">截止快照周期达成率</HelpTitle>, key: 'currentRate', width: 220,
+          render: (_, record) => {
+            const subs = record.subResults || []
+            if (subs.length === 0) return <span style={{ color: '#8c8c8c' }}>--</span>
+            const first = subs[0]
+            const more = subs.length > 1 ? <span style={{ color: '#8c8c8c', marginLeft: 4 }}>...</span> : null
+            return (
+              <span style={{ fontSize: 12 }}>
+                {first.project}: {renderRate(first.achieveRate)}{more}
+              </span>
+            )
+          },
+        },
+        { title: <HelpTitle helpKey="progress">达标进度</HelpTitle>, dataIndex: 'progressText', key: 'progressText', width: 120 },
+        {
+          title: <HelpTitle helpKey="overallStatus">整体状态</HelpTitle>, dataIndex: 'overallStatus', key: 'overallStatus', width: 110,
+          render: (v) => <Tag color={v === '保持达标' || v === '已达标' ? 'success' : v === '已失达标' ? 'warning' : 'error'}>{v}</Tag>,
+        },
+        {
+          title: '操作', key: 'action', width: 90, fixed: 'right',
+          render: (_, record) => (
+            <a onClick={() => { setCurrentStudent(generateMultiProjectDetailData(record.name, cycleType, sportMode, currentTab?.timeRange, currentTab?.countingRules)); setDetailModal(true) }}>查看详情</a>
+          ),
+        },
+      ]
+    : [
+        { title: '学生姓名', dataIndex: 'name', key: 'name', width: 90 },
+        { title: '学籍号', dataIndex: 'studentNo', key: 'studentNo', width: 130 },
+        { title: '班级', dataIndex: 'className', key: 'className', width: 120 },
+        { title: '年级', dataIndex: 'grade', key: 'grade', width: 70 },
+        { title: '性别', dataIndex: 'gender', key: 'gender', width: 50 },
+        {
+          title: <HelpTitle helpKey="currentRate">截止快照周期达成率</HelpTitle>, dataIndex: 'currentRate', key: 'currentRate', width: 150,
+          render: (v) => renderRate(v),
+          sorter: (a, b) => a.currentRate - b.currentRate,
+        },
+        { title: <HelpTitle helpKey="progress">达标进度</HelpTitle>, dataIndex: 'progressText', key: 'progressText', width: 120 },
+        {
+          title: <HelpTitle helpKey="overallStatus">整体状态</HelpTitle>, dataIndex: 'overallStatus', key: 'overallStatus', width: 110,
+          render: (v) => <Tag color={v === '保持达标' || v === '已达标' ? 'success' : v === '已失达标' ? 'warning' : 'error'}>{v}</Tag>,
+        },
+        {
+          title: '操作', key: 'action', width: 90, fixed: 'right',
+          render: (_, record) => (
+            <a onClick={() => { setCurrentStudent(generateStudentDetailData(record.name, cycleType, sportMode, currentTab?.timeRange, currentTab?.countingRules, currentTab?.executeWeekdays)); setDetailModal(true) }}>查看详情</a>
+          ),
+        },
+      ]
+
+  const classes = [...new Set(allData.map(d => d.className))]
+
+  return (
+    <div style={{ padding: 24 }}>
+      <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 16 }}>学生达成列表</div>
+
+      {(cycleType === 'daily' || cycleType === 'monthly') && (
+        <div style={{ marginBottom: 12, display: 'flex', gap: 12, alignItems: 'center' }}>
+          <span style={{ fontSize: 13, color: '#8c8c8c' }}>查看快照周期：</span>
+          {cycleType === 'daily'
+            ? <Select value={viewDate} onChange={setViewDate} placeholder="选择日期" style={{ width: 140 }}
+                options={dateOptions} allowClear size="small" />
+            : <Select value={viewMonth} onChange={setViewMonth} placeholder="选择月份" style={{ width: 120 }}
+                options={monthOptions} allowClear size="small" />}
+        </div>
+      )}
+
+      <div style={{ marginBottom: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Radio.Group value={statusFilter} onChange={e => setStatusFilter(e.target.value)} size="small"
+          options={[{ label: '全部', value: 'all' }, { label: '已达标', value: 'achieved' }, { label: '未达标', value: 'not-achieved' }]} />
+        <Select placeholder="年级" allowClear style={{ width: 110 }} value={gradeFilter} onChange={setGradeFilter}
+          options={GRADES.map(g => ({ label: g, value: g }))} />
+        <Select placeholder="班级" allowClear style={{ width: 130 }} value={classFilter} onChange={setClassFilter}
+          options={classes.map(c => ({ label: c, value: c }))} />
+        <Select placeholder="性别" allowClear style={{ width: 90 }} value={genderFilter} onChange={setGenderFilter}
+          options={[{ label: '不限', value: 'all' }, { label: '男', value: '男' }, { label: '女', value: '女' }]} />
+        <Input placeholder="学生姓名/学号" prefix={<SearchOutlined />} style={{ width: 180 }}
+          value={keyword} onChange={e => setKeyword(e.target.value)} allowClear />
+        <Button icon={<DownloadOutlined />} size="small" onClick={() => window.__mockExport?.()}>导出</Button>
+      </div>
+
+      <Table columns={studentColumns} dataSource={sorted} rowKey="id" size="small"
+        scroll={{ x: 1000, y: 400 }}
+        pagination={{ defaultPageSize: 20, showSizeChanger: true, showTotal: total => `共 ${total} 条` }} />
+
+      <StudentDetailModal visible={detailModal} data={currentStudent} onClose={() => setDetailModal(false)} />
+    </div>
+  )
+}
+
+// ====== 模块 CT: 教师达成列表（删除角色筛选） ======
+function ModuleCT_TeacherList({ currentTab }) {
+  const cycleType = currentTab?.cycleType
+  const sportMode = currentTab?.sportMode
+  const timeRange = currentTab?.timeRange
+
+  const allData = useMemo(() => generateTeacherAchievementList(50, cycleType, sportMode), [cycleType, sportMode, currentTab?.id])
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [keyword, setKeyword] = useState('')
+  const [detailModal, setDetailModal] = useState(false)
+  const [currentTeacher, setCurrentTeacher] = useState(null)
+
+  const filtered = useMemo(() => {
+    return allData.filter(item => {
+      if (statusFilter === 'achieved' && !item.achieved) return false
+      if (statusFilter === 'not-achieved' && item.achieved) return false
+      if (keyword && !item.name.includes(keyword)) return false
+      return true
+    })
+  }, [allData, statusFilter, keyword])
+
+  const sorted = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      if (a.achieved !== b.achieved) return a.achieved ? -1 : 1
+      return b.currentRate - a.currentRate
+    })
+  }, [filtered])
+
+  const columns = [
+    { title: '教师姓名', dataIndex: 'name', key: 'name', width: 100 },
+    {
+      title: <HelpTitle helpKey="currentRate">截止快照周期达成率</HelpTitle>, dataIndex: 'currentRate', key: 'currentRate', width: 150,
+      render: (v) => {
+        const capped = Math.min(v, 100)
+        return <span style={{ fontWeight: 600, color: capped >= 100 ? '#52c41a' : '#ff4d4f' }}>{capped}%</span>
+      },
+    },
+    { title: <HelpTitle helpKey="progress">达标进度</HelpTitle>, dataIndex: 'progressText', key: 'progressText', width: 120 },
+    {
+      title: <HelpTitle helpKey="overallStatus">整体状态</HelpTitle>, dataIndex: 'overallStatus', key: 'overallStatus', width: 110,
+      render: (v) => <Tag color={v === '保持达标' || v === '已达标' ? 'success' : v === '已失达标' ? 'warning' : 'error'}>{v}</Tag>,
+    },
+    {
+      title: '操作', key: 'action', width: 90,
+      render: (_, record) => (
+        <a onClick={() => { setCurrentTeacher(generateTeacherDetailData(record.name, cycleType, sportMode, currentTab?.timeRange, currentTab?.countingRules, currentTab?.executeWeekdays)); setDetailModal(true) }}>查看详情</a>
+      ),
+    },
+  ]
+
+  return (
+    <div style={{ padding: 24 }}>
+      <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 16 }}>教师达成列表</div>
+
+      <div style={{ marginBottom: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Radio.Group value={statusFilter} onChange={e => setStatusFilter(e.target.value)} size="small"
+          options={[{ label: '全部', value: 'all' }, { label: '已达标', value: 'achieved' }, { label: '未达标', value: 'not-achieved' }]} />
+        <Input placeholder="教师姓名" prefix={<SearchOutlined />} style={{ width: 180 }}
+          value={keyword} onChange={e => setKeyword(e.target.value)} allowClear />
+        <Button icon={<DownloadOutlined />} size="small" onClick={() => window.__mockExport?.()}>导出</Button>
+      </div>
+
+      <Table columns={columns} dataSource={sorted} rowKey="id" size="small"
+        scroll={{ y: 400 }} pagination={{ defaultPageSize: 20, showTotal: total => `共 ${total} 条` }} />
+
+      <TeacherDetailModal visible={detailModal} data={currentTeacher} onClose={() => setDetailModal(false)} />
+    </div>
+  )
+}
+
+// ====== 周期达标概览组件 ======
+function CycleAchievementOverview({ cycleType, sportMode, cycleOverview }) {
+  if (!cycleType || !cycleOverview) return null
+
+  // --- 每日目标：日历视图 ---
+  if (cycleType === 'daily') {
+    const dailyData = cycleOverview
+    const executionData = dailyData.filter(d => d.isExecutionDay !== false)
+    const achievedCount = executionData.filter(d => d.achieved).length
+    const totalDays = executionData.length
+    const achievedMap = {}
+    const executionMap = {}
+    dailyData.forEach(d => {
+      executionMap[d.date] = d.isExecutionDay !== false
+      if (d.isExecutionDay !== false) achievedMap[d.date] = d.achieved
+    })
+
+    return (
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>周期达标概览（每日）</div>
+        <Card size="small">
+          <div style={{ marginBottom: 8, fontSize: 13, color: '#595959' }}>
+            达标 <span style={{ color: '#52c41a', fontWeight: 600 }}>{achievedCount}</span>/{totalDays} 天
+          </div>
+          <Calendar
+            fullscreen={false}
+            defaultValue={dayjs('2026-05-15')}
+            cellRender={(current) => {
+              const dateStr = current.format('YYYY-MM-DD')
+              const achieved = achievedMap[dateStr]
+              if (executionMap[dateStr] === false || achieved === undefined) return null
+              return (
+                <div style={{
+                  background: achieved ? '#52c41a' : '#ff4d4f',
+                  color: '#fff',
+                  borderRadius: 4,
+                  textAlign: 'center',
+                  fontSize: 12,
+                  padding: '2px 4px',
+                  margin: '0 auto',
+                  maxWidth: 48,
+                }}>
+                  {achieved ? '达标' : '未达标'}
+                </div>
+              )
+            }}
+          />
+        </Card>
+      </div>
+    )
+  }
+
+  // --- 每月目标：月份卡片列表 ---
+  if (cycleType === 'monthly') {
+    const monthlyData = cycleOverview
+    return (
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>周期达标概览（每月）</div>
+        <Card size="small">
+          <Row gutter={[12, 12]}>
+            {monthlyData.map((m) => {
+              const [year, mon] = m.month.split('-')
+              const monthLabel = `${parseInt(mon)} 月`
+              return (
+                <Col span={8} key={m.month}>
+                  <Card size="small" style={{
+                    borderColor: m.achieved ? '#52c41a' : '#ff4d4f',
+                    background: m.achieved ? '#f6ffed' : '#fff2f0',
+                  }}>
+                    <div style={{ fontSize: 13, fontWeight: 500 }}>{monthLabel}</div>
+                    <div style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>{m.summary}</div>
+                    <Tag color={m.achieved ? 'success' : 'error'} style={{ marginTop: 4 }}>
+                      {m.achieved ? '已达标' : '未达标'}
+                    </Tag>
+                  </Card>
+                </Col>
+              )
+            })}
+          </Row>
+        </Card>
+      </div>
+    )
+  }
+
+  // --- 学期/自定义 - 全部项目或单个项目：进度展示 ---
+  if (sportMode === 'all' || sportMode === 'single') {
+    const overview = cycleOverview
+    if (!overview || !overview.progress) return null
+    return (
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>周期达标概览</div>
+        <Card size="small">
+          <Row gutter={16} align="middle">
+            <Col span={6}>
+              <Statistic title="目标值" value={overview.targetValue} valueStyle={{ fontSize: 16 }} />
+            </Col>
+            <Col span={6}>
+              <Statistic title="当前完成值" value={overview.currentValue} valueStyle={{ fontSize: 16 }} />
+            </Col>
+            <Col span={12}>
+              <div style={{ fontSize: 13, color: '#8c8c8c', marginBottom: 4 }}>完成进度</div>
+              <Progress percent={Math.min(overview.progress, 100)}
+                status={overview.progress >= 100 ? 'success' : 'active'} />
+            </Col>
+          </Row>
+        </Card>
+      </div>
+    )
+  }
+
+  // --- 学期/自定义 - 阳光跑：周达标 + 月达标 + 累计里程 ---
+  if (sportMode === 'sunrun') {
+    const sunrun = cycleOverview
+    if (!sunrun || !sunrun.weeks) return null
+    return (
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>周期达标概览（阳光跑）</div>
+        <Card size="small">
+          <Row gutter={16} align="top">
+            <Col span={6}>
+              <Statistic title="累计里程" value={sunrun.totalMileage} suffix="公里" precision={1} />
+            </Col>
+            <Col span={9}>
+              <div style={{ fontSize: 13, color: '#8c8c8c', marginBottom: 4 }}>每周达标</div>
+              <Space wrap size={[4, 4]}>
+                {sunrun.weeks.map((w) => (
+                  <Tag key={w.week} color={w.achieved ? 'success' : 'error'}>
+                    {w.week} {w.achieved ? '达标' : '未达标'}
+                  </Tag>
+                ))}
+              </Space>
+            </Col>
+            <Col span={9}>
+              <div style={{ fontSize: 13, color: '#8c8c8c', marginBottom: 4 }}>月度达标</div>
+              <Space wrap size={[4, 4]}>
+                {sunrun.months.map((m) => {
+                  const monthLabel = `${parseInt(m.month.split('-')[1])} 月`
+                  return (
+                    <Tag key={m.month} color={m.achieved ? 'success' : 'error'}>
+                      {monthLabel} {m.achieved ? '达标' : '未达标'}
+                    </Tag>
+                  )
+                })}
+              </Space>
+            </Col>
+          </Row>
+        </Card>
+      </div>
+    )
+  }
+
+  // multi 模式由 subResults 表展示，此处不重复
+  return null
+}
+
+// ====== 模块 D: 学生达成详情弹窗 ======
+function StudentDetailModal({ visible, data, onClose }) {
+  if (!data) return null
+
+  const [includeStatusFilter, setIncludeStatusFilter] = useState('all')
+  const [dateRange, setDateRange] = useState(null)
+
+  const filteredRecords = useMemo(() => {
+    let records = [...data.records]
+    if (includeStatusFilter !== 'all') {
+      records = records.filter(r => {
+        if (includeStatusFilter === 'full') return r.includeStatus === '全部计入'
+        if (includeStatusFilter === 'partial') return r.includeStatus === '部分计入'
+        return true
+      })
+    }
+    if (dateRange && dateRange.length === 2) {
+      const start = dateRange[0]?.format?.('YYYY-MM-DD') || ''
+      const end = dateRange[1]?.format?.('YYYY-MM-DD') || ''
+      records = records.filter(r => {
+        const recordDate = r.includeTime.substring(0, 10)
+        return recordDate >= start && recordDate <= end
+      })
+    }
+    return records
+  }, [data.records, includeStatusFilter, dateRange])
+
+  const recordColumns = [
+    { title: '运动项目', dataIndex: 'sportProject', key: 'sportProject', width: 90 },
+    { title: '运动时间', dataIndex: 'sportTime', key: 'sportTime', width: 120 },
+    { title: '业务类型', dataIndex: 'businessType', key: 'businessType', width: 100 },
+    { title: '计入时间', dataIndex: 'includeTime', key: 'includeTime', width: 160 },
+    { title: '成绩', dataIndex: 'score', key: 'score', width: 120 },
+    {
+      title: '成绩状态', dataIndex: 'scoreStatus', key: 'scoreStatus', width: 90,
+      render: (v) => <Tag color={v === '正常' ? 'success' : 'warning'}>{v}</Tag>,
+    },
+    { title: '运动时长', dataIndex: 'sportDuration', key: 'sportDuration', width: 100 },
+    {
+      title: '计入状态', dataIndex: 'includeStatus', key: 'includeStatus', width: 100,
+      render: (v) => <Tag color={v === '全部计入' ? 'success' : 'warning'}>{v}</Tag>,
+    },
+    {
+      title: '计入成绩', dataIndex: 'includeScore', key: 'includeScore', width: 100,
+      render: (v) => <span style={{ color: '#fa8c16', fontWeight: 600 }}>{v || '--'}</span>,
+    },
+    {
+      title: '操作', key: 'action', width: 80, fixed: 'right',
+      render: () => <Button type="link" size="small" onClick={() => message.success('跳转运动记录详情页')}>详情</Button>,
+    },
+  ]
+
+  return (
+    <Modal title="学生达成详情" open={visible} onCancel={onClose} width={1000} footer={null}>
+      <Descriptions bordered size="small" column={3} style={{ marginBottom: 16 }}>
+        <Descriptions.Item label="学生姓名" span={1}>{data.name}</Descriptions.Item>
+        <Descriptions.Item label="性别" span={1}>{data.gender}</Descriptions.Item>
+        <Descriptions.Item label="学籍号" span={1}>{data.studentNo}</Descriptions.Item>
+        <Descriptions.Item label="班级" span={1}>{data.className}</Descriptions.Item>
+        <Descriptions.Item label="目标名称" span={1}>{data.goalName}</Descriptions.Item>
+        <Descriptions.Item label="目标值" span={1}>{data.targetValue}</Descriptions.Item>
+        <Descriptions.Item label="整体状态" span={1}>
+          <Tag color={getOverallStatusColor(getOverallStatusText(data))}>{getOverallStatusText(data)}</Tag>
+        </Descriptions.Item>
+      </Descriptions>
+
+      {/* 周期达标概览 */}
+      <CycleAchievementOverview
+        cycleType={data.cycleType}
+        sportMode={data.sportMode}
+        cycleOverview={data.cycleOverview}
+      />
+
+      {/* 多项目子条件达标状态 */}
+      {data.subResults && data.subResults.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>子条件达标状态</div>
+          <Table
+            dataSource={data.subResults}
+            rowKey="project"
+            size="small"
+            pagination={false}
+            columns={[
+              { title: '运动项目', dataIndex: 'project', key: 'project', width: 100 },
+              { title: '目标值', dataIndex: 'targetValue', key: 'targetValue', width: 100 },
+              { title: '完成值', dataIndex: 'completeValue', key: 'completeValue', width: 100 },
+              {
+                title: '达成率', dataIndex: 'achieveRate', key: 'achieveRate', width: 80,
+                render: (v) => <span style={{ fontWeight: 600 }}>{Math.min(v, 100)}%</span>,
+              },
+              {
+                title: '达标状态', dataIndex: 'achieved', key: 'achieved', width: 90,
+                render: (v) => <Tag color={v ? 'success' : 'error'}>{v ? '已达标' : '未达标'}</Tag>,
+              },
+            ]}
+          />
+        </div>
+      )}
+
+      <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 12 }}>计入记录明细</div>
+
+      <div style={{ marginBottom: 12, display: 'flex', gap: 12, alignItems: 'center' }}>
+        <Radio.Group value={includeStatusFilter} onChange={e => setIncludeStatusFilter(e.target.value)} size="small"
+          options={[
+            { label: '全部', value: 'all' },
+            { label: '全部计入', value: 'full' },
+            { label: '部分计入', value: 'partial' },
+          ]} />
+        <span style={{ fontSize: 13, color: '#8c8c8c' }}>时间范围：</span>
+        <Input placeholder="起始日期 如 2026-05-01" style={{ width: 130 }} size="small"
+          onChange={e => {
+            const range = window.__dateRange || [null, null]
+            range[0] = e.target.value || null
+            window.__dateRange = range
+            setDateRange(range)
+          }} />
+        <span style={{ color: '#8c8c8c' }}>至</span>
+        <Input placeholder="结束日期 如 2026-05-15" style={{ width: 130 }} size="small"
+          onChange={e => {
+            const range = window.__dateRange || [null, null]
+            range[1] = e.target.value || null
+            window.__dateRange = range
+            setDateRange(range)
+          }} />
+      </div>
+
+      <Table columns={recordColumns} dataSource={filteredRecords} rowKey="id" size="small"
+        pagination={{ pageSize: 10, showTotal: total => `共 ${total} 条` }} scroll={{ y: 350 }} />
+    </Modal>
+  )
+}
+
+// ====== 模块 DT: 教师达成详情弹窗 ======
+function TeacherDetailModal({ visible, data, onClose }) {
+  if (!data) return null
+
+  const recordColumns = [
+    { title: '运动项目', dataIndex: 'sportProject', key: 'sportProject', width: 90 },
+    { title: '运动时间', dataIndex: 'sportTime', key: 'sportTime', width: 120 },
+    { title: '业务类型', dataIndex: 'businessType', key: 'businessType', width: 100 },
+    { title: '计入时间', dataIndex: 'includeTime', key: 'includeTime', width: 160 },
+    { title: '成绩', dataIndex: 'score', key: 'score', width: 120 },
+    {
+      title: '成绩状态', dataIndex: 'scoreStatus', key: 'scoreStatus', width: 90,
+      render: (v) => <Tag color={v === '正常' ? 'success' : 'warning'}>{v}</Tag>,
+    },
+    { title: '运动时长', dataIndex: 'sportDuration', key: 'sportDuration', width: 100 },
+    {
+      title: '计入状态', dataIndex: 'includeStatus', key: 'includeStatus', width: 100,
+      render: (v) => <Tag color={v === '全部计入' ? 'success' : 'warning'}>{v}</Tag>,
+    },
+    {
+      title: '计入成绩', dataIndex: 'includeScore', key: 'includeScore', width: 100,
+      render: (v) => <span style={{ color: '#fa8c16', fontWeight: 600 }}>{v || '--'}</span>,
+    },
+    {
+      title: '操作', key: 'action', width: 80, fixed: 'right',
+      render: () => <Button type="link" size="small" onClick={() => message.success('跳转运动记录详情页')}>详情</Button>,
+    },
+  ]
+
+  return (
+    <Modal title="教师达成详情" open={visible} onCancel={onClose} width={1000} footer={null}>
+      <Descriptions bordered size="small" column={3} style={{ marginBottom: 16 }}>
+        <Descriptions.Item label="教师姓名" span={1}>{data.name}</Descriptions.Item>
+        <Descriptions.Item label="目标名称" span={1}>{data.goalName}</Descriptions.Item>
+        <Descriptions.Item label="目标值" span={1}>{data.targetValue}</Descriptions.Item>
+        <Descriptions.Item label="整体状态" span={1}>
+          <Tag color={getOverallStatusColor(getOverallStatusText(data))}>{getOverallStatusText(data)}</Tag>
+        </Descriptions.Item>
+      </Descriptions>
+
+      <CycleAchievementOverview
+        cycleType={data.cycleType}
+        sportMode={data.sportMode}
+        cycleOverview={data.cycleOverview}
+      />
+
+      <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 12 }}>计入记录明细</div>
+      <Table columns={recordColumns} dataSource={data.records} rowKey="id" size="small"
+        pagination={{ pageSize: 10, showTotal: total => `共 ${total} 条` }} scroll={{ y: 350 }} />
+    </Modal>
+  )
+}
+
+// ====== 目标规则查看抽屉（对齐 GoalDetail FullInfoDrawer） ======
+function GoalRuleDrawer({ visible, goal, onClose }) {
+  if (!goal) {
+    return (
+      <Drawer title="目标完整信息" placement="right" width={640} open={visible} onClose={onClose}>
+        <Empty description="暂无规则信息" />
+      </Drawer>
+    )
+  }
+
+  const infoItems = [
+    { label: '基础信息', children: null, type: 'group' },
+    { label: '目标名称', children: goal.name || goal.label },
+    { label: '目标类型', children: <Tag color={goal.groupType === 'school' ? 'blue' : goal.groupType === 'class' ? 'green' : 'purple'}>{goal.groupType === 'school' ? '校级目标' : goal.groupType === 'class' ? '班级目标' : '教师目标'}</Tag> },
+    { label: '周期类型', children: <Tag color={goal.cycleType === 'daily' ? 'cyan' : goal.cycleType === 'monthly' ? 'geekblue' : goal.cycleType === 'semester' ? 'purple' : 'orange'}>{goal.cycleLabel}</Tag> },
+    { label: '创建人', children: goal.creator || `${goal.groupType === 'school' ? '张管理' : goal.groupType === 'class' ? '王主任' : '刘老师'}（学校管理员）` },
+    { label: '创建时间', children: goal.createdAt || '2026-03-01 10:00:00' },
+
+    { label: '周期信息', children: null, type: 'group' },
+    { label: '生效周期', children: goal.timeRange || goal.periodText || '未设置' },
+    ...(goal.cycleType === 'daily' ? [{ label: '执行星期', children: goal.executeWeekdaysText || goal.executeWeekdays?.join('、') || '周一至周日' }] : []),
+    { label: '目标值摘要', children: goal.targetSummary || goal.goalValueSummary || '未设置' },
+
+    { label: '计入运动项目', children: null, type: 'group' },
+    { label: '计入方式', children: <Tag color={goal.sportMode === 'sunrun' ? 'purple' : goal.sportMode === 'all' ? 'blue' : goal.sportMode === 'multi' ? 'orange' : 'green'}>{goal.sportModeLabel}</Tag> },
+    { label: '目标值详情', children: goalValueDetailDisplay(goal) },
+
+    ...(goal.sportMode === 'sunrun' ? [
+      { label: '阳光跑专配', children: null, type: 'group' },
+      ...sunrunConfigItems(goal),
+    ] : []),
+
+    { label: '适用范围', children: null, type: 'group' },
+    { label: '适用层级/范围', children: scopeLevelDisplay(goal) },
+    { label: '性别设定', children: genderDisplay(goal) },
+    { label: '覆盖快照人数', children: `${goal.totalStudents || goal.totalTeachers || goal.coverageSnapshotCount || 0}人（创建后固定）`, span: 2 },
+    { label: '覆盖快照说明', children: '学生转班、删除学生、班级调整不改变已有目标覆盖名单', span: 2 },
+
+    { label: '计入规则', children: null, type: 'group' },
+    { label: '计入运动项目', children: countingSportsDisplay(goal) },
+    { label: '业务类型', children: goal.countingBusinessTypes || '自由训练、随堂测试、串班训练、体质测试、校园活动、阳光跑' },
+    { label: '成绩状态', children: goal.countingScoreStatuses || '正常' },
+    { label: '项目标签', children: projectTagsDisplay(goal) },
+
+    { label: '状态信息', children: null, type: 'group' },
+    { label: '统计截止时间', children: goal.snapshotTime || '2026-05-18 24:00', span: 2 },
+    { label: '当前状态', children: <Tag color={goal.status === 'active' ? 'success' : goal.status === 'pending' ? 'default' : goal.status === 'stopped' ? 'warning' : 'default'}>{goal.status === 'active' ? '生效中' : goal.status === 'pending' ? '未生效' : goal.status === 'stopped' ? '已停止' : '已过期'}</Tag> },
+    { label: '状态变更时间', children: goal.statusTime || goal.timeRange?.split('至')[0]?.trim() || '--' },
+    { label: '最近编辑', children: goal.lastEditor || '--' },
+    { label: '最近编辑时间', children: goal.lastEditTime || '--' },
+  ]
+
+  return (
+    <Drawer title="目标完整信息" placement="right" width={640} open={visible} onClose={onClose}>
+      <Descriptions bordered size="small" column={2}>
+        {infoItems.map((item, idx) => {
+          if (item.type === 'group') {
+            return (
+              <Descriptions.Item key={idx} label={<span style={{ fontWeight: 500, color: '#1677ff' }}>{item.label}</span>} span={2}>
+                {item.children || null}
+              </Descriptions.Item>
+            )
+          }
+          return (
+            <Descriptions.Item key={idx} label={item.label}>
+              {item.children || '未设置'}
+            </Descriptions.Item>
+          )
+        })}
+      </Descriptions>
+    </Drawer>
+  )
+}
+
+// ====== 抽屉辅助展示函数 ======
+
+function goalValueDetailDisplay(goal) {
+  if (goal.sportMode === 'all') return `运动时长：${goal.duration || 60} 分钟`
+  if (goal.sportMode === 'single') return `${goal.singleProject || '项目'} ${goal.singleTarget || goal.targetValue || 0} ${goal.targetUnit || '个'}`
+  if (goal.sportMode === 'multi') {
+    return (goal.subConditions || goal.subProjects || []).map(s => `${s.name || s.sportProject} ${s.targetValue}${s.unit}`).join('；') || '未设置子条件'
+  }
+  if (goal.sportMode === 'sunrun') {
+    const cfg = goal.sunrunConfig || {}
+    return (
+      <div>
+        <div>周最低次数：{cfg.weeklyMin != null ? `${cfg.weeklyMin}次（开启）` : '关闭'}</div>
+        <div>月最低次数：{cfg.monthlyMin != null ? `${cfg.monthlyMin}次（开启）` : '关闭'}</div>
+        <div>每日最多计入限制：{cfg.dailyLimit ? `${cfg.dailyLimit}（开启）` : '关闭'}</div>
+        <div style={{ color: '#8c8c8c', fontSize: 12 }}>配速要求：未配置</div>
+      </div>
+    )
+  }
+  return '未设置'
+}
+
+function sunrunConfigItems(goal) {
+  const cfg = goal.sunrunConfig || {}
+  return [
+    { label: '周最低次数', children: cfg.weeklyMin != null ? `${cfg.weeklyMin}次` : '关闭' },
+    { label: '月最低次数', children: cfg.monthlyMin != null ? `${cfg.monthlyMin}次` : '关闭' },
+    { label: '每日最多计入限制', children: cfg.dailyLimit ? `${cfg.dailyLimit}` : '关闭' },
+    { label: '配速要求', children: '未配置', span: 2 },
+  ]
+}
+
+function countingSportsDisplay(goal) {
+  const sports = goal.countingSportProjects || (goal.sportMode === 'sunrun' ? ['阳光跑'] : goal.sportMode === 'all' ? 'all' : goal.sportMode === 'single' ? [goal.singleProject || '未指定'] : (goal.subProjects || []).map(s => s.name))
+  if (sports === 'all') return <Tag>全部运动项目</Tag>
+  if (Array.isArray(sports) && sports.length > 0) return sports.map(s => <Tag key={s}>{s}</Tag>)
+  return <Tag>全部运动项目</Tag>
+}
+
+function scopeLevelDisplay(goal) {
+  if (goal.groupType === 'class') return goal.scopeText || '指定班级'
+  if (goal.groupType === 'teacher') return goal.scopeText || '全校教师'
+  return goal.scopeText || '全校'
+}
+
+function genderDisplay(goal) {
+  const g = goal.scopeGender || 'all'
+  if (g === 'male') return <span>男</span>
+  if (g === 'female') return <span>女</span>
+  return '不限'
+}
+
+function projectTagsDisplay(goal) {
+  const tags = goal.countingProjectTags
+  if (!tags || tags.length === 0) return '无'
+  return tags.join('、')
+}
+
+// ====== 模块 T: 教师达成列表（无排名） ======
+function ModuleT_TabContainer({ currentTab }) {
+  return (
+    <div style={{ background: '#fff', borderRadius: 8 }}>
+      <Tabs
+        activeKey="teachers"
+        size="small"
+        items={[
+          { key: 'teachers', label: '教师达成列表', children: <ModuleCT_TeacherList currentTab={currentTab} /> },
+        ]}
+      />
+    </div>
+  )
+}

@@ -1,0 +1,27 @@
+
+> xty-k12@0.0.0 dev
+> node ./node_modules/vite/bin/vite.js
+
+4:05:31 PM [vite] (client) Re-optimizing dependencies because vite config has changed
+
+  VITE v8.0.12  ready in 1148 ms
+
+  ➜  Local:   http://localhost:3001/
+  ➜  Network: http://192.168.8.147:3001/
+4:05:33 PM [vite] (client) [optimizer] bundling dependencies...
+5:15:55 PM [vite] (client) hmr update /src/pages/Goal/Management/GoalDetail.jsx, /src/pages/Goal/Management/TeacherGoalManagement.jsx, /src/pages/Goal/Management/StudentGoalManagement.jsx, /src/pages/Goal/Management/CreateGoalWizard.jsx
+5:16:42 PM [vite] (client) hmr update /src/pages/Goal/Management/GoalDetail.jsx, /src/pages/Goal/Management/TeacherGoalManagement.jsx, /src/pages/Goal/Management/StudentGoalManagement.jsx, /src/pages/Goal/Management/CreateGoalWizard.jsx
+5:17:16 PM [vite] (client) hmr update /src/pages/Goal/Management/CreateGoalWizard.jsx
+5:18:17 PM [vite] (client) hmr update /src/pages/Goal/Statistics/index.jsx
+5:18:54 PM [vite] (client) hmr update /src/pages/Goal/Statistics/index.jsx
+5:19:10 PM [vite] (client) hmr update /src/pages/Goal/Management/GoalDetail.jsx
+5:19:58 PM [vite] (client) hmr update /src/pages/Goal/Management/GoalDetail.jsx
+5:21:14 PM [vite] (client) hmr update /src/pages/Goal/Statistics/index.jsx
+5:21:30 PM [vite] (client) hmr update /src/pages/Goal/Statistics/index.jsx
+5:21:41 PM [vite] (client) hmr update /src/pages/Goal/Statistics/index.jsx
+5:23:43 PM [vite] (client) hmr update /src/pages/Goal/Management/CreateGoalWizard.jsx
+5:23:57 PM [vite] (client) hmr update /src/pages/Goal/Statistics/index.jsx
+5:24:09 PM [vite] (client) hmr update /src/pages/Goal/Statistics/index.jsx
+5:25:18 PM [vite] (client) hmr update /src/pages/Goal/Statistics/index.jsx
+5:25:28 PM [vite] (client) hmr update /src/pages/Goal/Management/GoalDetail.jsx
+5:47:07 PM [vite] (client) hmr update /src/pages/Goal/Management/GoalDetail.jsx

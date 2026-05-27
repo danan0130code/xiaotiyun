@@ -1,0 +1,40 @@
+:root {
+  /* 教师端主题色 - 深蓝 */
+  --van-primary-color: #0069EC;
+  --van-tabbar-active-color: #0069EC;
+  --van-button-primary-background-color: #0069EC;
+
+  --primary-color: #0069EC;
+
+  /* 背景色 */
+  --bg-color: #f5f7fa;
+  --card-bg: #ffffff;
+
+  /* 头部背景 */
+  --header-bg-start: #0c2242;
+  --header-bg-end: #1a3a5c;
+
+  /* 文字色 */
+  --text-color: #333333;
+  --text-secondary: #666666;
+  --text-placeholder: #999999;
+
+  /* 边框色 */
+  --border-color: #f0f0f0;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body, #app {
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  font-size: 14px;
+  color: var(--text-color);
+  background-color: var(--bg-color);
+  -webkit-font-smoothing: antialiased;
+}
