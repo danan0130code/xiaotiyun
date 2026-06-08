@@ -15,6 +15,7 @@ import {
 } from 'antd'
 import {
   ArrowLeftOutlined,
+  CameraOutlined,
   CloudDownloadOutlined,
   DeleteOutlined,
   DownloadOutlined,
@@ -42,6 +43,8 @@ function DeviceField({ label, value }) {
 }
 
 function DeviceCard({ device, checked, onCheck, onDetail }) {
+  const navigate = useNavigate()
+
   return (
     <div className="device-card">
       <div className="device-card-head">
@@ -69,6 +72,9 @@ function DeviceCard({ device, checked, onCheck, onDetail }) {
       <div className="device-card-actions">
         <Button size="small" type="link" onClick={() => onDetail(device)}>
           查看详情
+        </Button>
+        <Button size="small" type="link" onClick={() => navigate(`/operations/remote-config/${device.id}`)}>
+          远程配置
         </Button>
         <Button size="small" type="link">获取日志</Button>
         <Button size="small" type="link">日志下载</Button>
@@ -151,6 +157,9 @@ function DeviceDetailPage({ device }) {
           </div>
         </div>
         <Space className="detail-action-row">
+          <Button type="primary" icon={<CameraOutlined />} onClick={() => navigate(`/operations/remote-config/${device.id}`)}>
+            相机远程配置
+          </Button>
           <Button icon={<ReloadOutlined />}>更新</Button>
           <Button>重启</Button>
           <Button>删除更新包</Button>

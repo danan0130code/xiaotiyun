@@ -1,4 +1,4 @@
-import { BellOutlined, SettingOutlined, UserOutlined } from '@ant-design/icons'
+import { AppstoreOutlined, BellOutlined, MenuOutlined, SettingOutlined, UserOutlined } from '@ant-design/icons'
 import { Avatar, Button, Space } from 'antd'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { getTopKeyByPath, menuConfig } from '../../router'
@@ -21,11 +21,20 @@ export default function TopHeader({ activeKey, onChange }) {
     }
   }
 
+  const menuIcon = {
+    operations: <AppstoreOutlined />,
+    users: <UserOutlined />,
+    menus: <MenuOutlined />,
+  }
+
   return (
     <div className="top-header">
       <div className="top-brand" onClick={() => navigate('/operations/device')}>
-        <div className="top-brand-mark">AI</div>
-        <div className="top-brand-title">AI体育设备运维管理平台</div>
+        <img
+          className="top-brand-logo"
+          src="https://ytj-admin.xiaoti.cloud/png/logo-DwVQ5H5_.png"
+          alt="AI体育设备运维管理平台"
+        />
       </div>
       <div className="top-menu">
         {menuConfig.map(item => (
@@ -35,6 +44,7 @@ export default function TopHeader({ activeKey, onChange }) {
             type="button"
             onClick={() => handleClick({ key: item.key })}
           >
+            {menuIcon[item.key]}
             {item.label}
           </button>
         ))}
